@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monthly Scheme Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f2f5f7;--surf:#fff;--ink:#14212b;--mut:#5b6b78;--line:#d9e1e7;--acc:#0f766e;--acc-ink:#fff;--warn:#b45309;--okbg:#e3f4f1;--box-sizing:border-box;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f171d;--surf:#17222a;--ink:#e8eef2;--mut:#93a4b1;--line:#2a3a45;--acc:#2dd4bf;--acc-ink:#04201c;--warn:#f59e0b;--okbg:#12302d}}
+:root[data-theme="dark"]{--bg:#0f171d;--surf:#17222a;--ink:#e8eef2;--mut:#93a4b1;--line:#2a3a45;--acc:#2dd4bf;--acc-ink:#04201c;--warn:#f59e0b;--okbg:#12302d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 "Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:4px 0 2px;letter-spacing:-.01em}
+h2{font-size:17px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 18px}
+section{background:var(--surf);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+button,.btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--surf);color:var(--ink);padding:8px 14px;border-radius:7px;cursor:pointer}
+button.pri,.btn.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input[type=text],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+textarea{width:100%;min-height:200px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
+.msg{margin-top:10px;font-size:14px;color:var(--mut)}.msg.err{color:var(--warn)}.msg.ok{color:var(--acc)}
+.tw{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-weight:700;color:var(--mut);font-size:12.5px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tot{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
+.tot div{flex:1 1 180px;background:var(--okbg);border-radius:8px;padding:10px 14px}
+.tot b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.tot span{font-size:12.5px;color:var(--mut)}
+details{border:1px solid var(--line);border-radius:8px;margin-top:8px;background:var(--surf)}
+summary{cursor:pointer;padding:10px 12px;display:flex;justify-content:space-between;gap:10px;font-weight:500}
+details>.tw{padding:0 10px 10px;margin:0}
+.nx{color:var(--warn)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.chips span{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:2px 10px;font-size:12.5px}
+@media print{main>h1,main>p.sub,main>section:not(#formsec),.noprint{display:none!important}body{background:#fff}main{padding:0;max-width:none}#formsec{border:0;padding:0;background:none}.form{border:0!important;margin:0!important}}
+</style>
+</head>
+<body>
+<main>
+<h1>Monthly scheme calculator</h1>
+<p class="sub">Upload this month’s scheme image once, then upload sales data. Slabs and scheme value are calculated for every route.</p>
+
+<section>
+<h2>1. Scheme for the month <span id="mlabel" style="color:var(--acc)"></span></h2>
+<p class="sub" style="margin:0">Upload the scheme image. Claude reads it and replaces last month’s rules.</p>
+<div class="row">
+<input type="file" id="img" accept="image/*" aria-label="Scheme image">
+<button class="pri" id="readImg" disabled>Read scheme from image</button>
+</div>
+<div class="msg" id="imgMsg"></div>
+<div class="chips" id="ruleChips"></div>
+<details><summary>Check or edit scheme rules</summary>
+<div style="padding:0 12px 12px">
+<textarea id="rulesTxt" spellcheck="false" aria-label="Scheme rules JSON"></textarea>
+<div class="row"><button id="applyRules">Apply edits</button><button id="dlRules">Save rules file</button>
+<label class="btn" style="cursor:pointer">Load rules file<input type="file" id="ldRules" accept=".json" hidden></label>
+<button id="resetRules">Back to Oct’26 default</button></div>
+<div class="msg">codes = 4-digit FG numbers. keywords = words matched in product description (for “ALL …” rows). Use + to need several words (glycerine+50ml) and ! to exclude (!25ml). unit = ctn or pcs. branch = blank, only:Dar es Salaam, or except:Dar es Salaam.</div>
+</div></details>
+</section>
+
+<section>
+<h2>2. Sales data</h2>
+<p class="sub" style="margin:0">Excel or CSV (loading sheet with item no, description, sold quantity, line amount, location).</p>
+<div class="row">
+<input type="file" id="sales" accept=".xlsx,.xls,.csv" aria-label="Sales file">
+<label class="f">Sheet<select id="sheet"></select></label>
+<label class="f">Branch of this data<input type="text" id="branch" placeholder="e.g. Dar es Salaam"></label>
+</div>
+<div class="row" id="mapRow"></div>
+<div class="msg" id="salesMsg"></div>
+</section>
+
+<section>
+<h2>3. Scheme result</h2>
+<div id="out"><div class="msg">Add the scheme and sales data to see results.</div></div>
+</section>
+
+<section id="formsec">
+<h2 class="noprint">4. BTL declaration forms</h2>
+<p class="sub noprint" style="margin:0">One form per route. Customer and invoice columns stay blank to fill by hand. The date is today’s date, even if you upload return data.</p>
+<div class="row noprint"><label class="f">Form date<input type="date" id="fdate"></label><button class="pri" id="prt">Print forms</button><button id="svf">Download printable forms</button></div>
+<div class="msg noprint" id="pmsg"></div>
+<div id="forms"></div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=(n,d=0)=>Number(n||0).toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d});
+const S=t=>t.split(",").map(x=>{const[a,b]=x.split(":");return{min:+a,pct:+b}});
+const R=(name,codes,slabs,o={})=>Object.assign({name,codes,keywords:[],unit:"ctn",branch:"",type:"pct",slabs:S(slabs)},o);
+const DEFAULT={month:"Oct’26",rules:[
+R("20 GM toothpaste (TATP + Herbal)",[2006,2021],"5:2,15:3,25:4,40:6",{keywords:["tatp+20g","herbal+20g"]}),
+R("40 GM toothpaste (TATP + Herbal)",[2005,2028],"5:2,15:3,25:4,40:6",{keywords:["tatp+40g","herbal+40g"]}),
+R("70 GM toothpaste (TATP + Herbal)",[2016,2022],"5:2,15:3,25:4,40:6",{keywords:["tatp+70g","herbal+70g"]}),
+R("80 GM toothpaste (TATP + Herbal)",[],"5:2,15:3,25:4,40:6",{keywords:["tatp+80g","herbal+80g"]}),
+R("110 & 125 GM toothpaste",[2024,2010],"3:2,10:4,20:7",{keywords:["tatp+110g","herbal+110g","tatp+125g","herbal+125g"]}),
+R("190 GM toothpaste (TATP + Herbal)",[2212,2213],"3:2,10:4,20:7",{keywords:["tatp+190g","herbal+190g"]}),
+R("250 GM toothpaste (TATP + Herbal)",[2013,2081],"3:2,10:4,20:7",{keywords:["tatp+250g","herbal+250g"]}),
+R("Cavity Fighter toothpaste",[2062,2063,2064,2065,2066,2067],"2:15,5:20"),
+R("Premium toothpaste",[2054,2055,2069,2070,2071,2072,2073,2085,2086],"1:15,3:20"),
+R("Toothbrush regular",[2103],"5:1.5,30:3,75:4"),
+R("Premium toothbrush",[2102,2116,2119],"12:20,36:30,60:40",{unit:"pcs",slabs:[{min:12,pct:20},{min:36,pct:30,foc:true},{min:60,pct:40,foc:true}]}),
+R("Petroleum jelly (all PJ)",[1025,1026,1034,1063,1070,1071,1083,1089,1115,1116,1117,1118],"5:1,20:2,30:3",{keywords:["petroleum","pj","pomade","milking jelly"]}),
+R("Glycerine 50 ML",[],"5:2,20:4,30:6",{keywords:["glycerine+50ml"]}),
+R("Glycerine 25 ML",[],"5:2,20:4,30:6",{keywords:["glycerine+25ml"]}),
+R("Glycerine other sizes",[],"5:2,20:4,30:6",{keywords:["glycerine+!50ml+!25ml"]}),
+R("Creams & lotions",[],"5:2,10:3,20:4",{keywords:["cream","lotion"]}),
+R("Tressa hair care",[1228,1229,1230,1311,1312,1313,1314,1206,1204],"5:3,25:4,50:6"),
+R("Squashes 500 ML",[],"5:1,30:2,50:3,100:4",{keywords:["chemicola+500ml","squash+500ml"]}),R("Squashes other sizes",[],"5:1,30:2,50:3,100:4",{keywords:["chemicola+!500ml","squash+!500ml"]}),
+R("Baking powder",[3201,3202,3203,3204,3205],"5:1,30:2,50:3,100:4"),
+R("Bicarbonate",[3301,3302],"5:1,30:2,50:3,100:4"),
+R("Vinegar 500ML (DSM & Morogoro)",[],"5:1,30:2,50:3,80:4",{keywords:["vinegar+500ml"],branch:"only:Dar es Salaam,Morogoro"}),R("Vinegar 1000ML (DSM & Morogoro)",[],"5:1,30:2,50:3,80:4",{keywords:["vinegar+1000ml"],branch:"only:Dar es Salaam,Morogoro"}),R("Vinegar other sizes (DSM & Morogoro)",[],"5:1,30:2,50:3,80:4",{keywords:["vinegar+!500ml+!1000ml"],branch:"only:Dar es Salaam,Morogoro"}),
+R("Vinegar 500ML (other branches)",[],"5:3,30:4,50:6,100:8",{keywords:["vinegar+500ml"],branch:"except:Dar es Salaam,Morogoro"}),R("Vinegar 1000ML (other branches)",[],"5:3,30:4,50:6,100:8",{keywords:["vinegar+1000ml"],branch:"except:Dar es Salaam,Morogoro"}),R("Vinegar other sizes (other branches)",[],"5:3,30:4,50:6,100:8",{keywords:["vinegar+!500ml+!1000ml"],branch:"except:Dar es Salaam,Morogoro"}),
+R("Tressa hair extension",[],"15:6,25:8,50:10",{keywords:["hair extension","extension"]}),
+R("Tressa imported (Luxury)",[],"1:50",{keywords:["luxury","imported"],unit:"pcs"}),
+R("Hand wash",[4409,4410,4411],"1:50",{unit:"pcs"}),
+R("Doctor Whitedent 100g/150g",[2056,2057],"1:0",{keywords:["doctor+dent"],type:"gift",gift:"1 Babysoft giftpack per carton"}),
+R("Tressa coconut oil",[1311,1312,1313,1314],"1:0",{type:"gift",gift:"1 Babysoft giftpack per carton"})
+]};
+function sizeOf(t){const m=String(t).match(/(\d+(?:\.\d+)?)\s*(GM|G|ML|LTR|L|KG)\b/i);return m?m[1]+(m[2].toUpperCase()==='G'?'GM':m[2].toUpperCase()):'other'}
+function refine(s){(s.rules||[]).forEach(r=>{if(/\b(20|40|70|80|190|250)\s*GM\b/i.test(r.name)||/vinegar|glycerine/i.test(r.name))r.splitSize=true;if(/premium\s*tooth\s*brush/i.test(r.name)){r.unit='pcs';(r.slabs||[]).forEach(x=>{if(x.pct>=30)x.foc=true})}});return s}
+let scheme=load();
+function load(){try{const s=localStorage.getItem("scheme_v5");if(s)return refine(JSON.parse(s))}catch(e){}return JSON.parse(JSON.stringify(DEFAULT))}
+function save(){try{localStorage.setItem("scheme_v5",JSON.stringify(scheme))}catch(e){}}
+function showScheme(){
+  $("mlabel").textContent=scheme.month?"· "+scheme.month:"";
+  $("rulesTxt").value=JSON.stringify(scheme,null,1);
+  $("ruleChips").innerHTML=scheme.rules.map(r=>`<span>${esc(r.name)}</span>`).join("");
+  recalc();
+}
+
+/* ---- scheme from image ---- */
+$("img").onchange=()=>{$("readImg").disabled=!$("img").files[0]};
+async function shrink(file){
+  const bmp=await createImageBitmap(file);const k=Math.min(1,2000/Math.max(bmp.width,bmp.height));
+  const c=document.createElement("canvas");c.width=bmp.width*k;c.height=bmp.height*k;
+  c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+  return new Promise(r=>c.toBlob(r,"image/jpeg",.9));
+}
+$("readImg").onclick=async()=>{
+  const msg=$("imgMsg");msg.className="msg";msg.textContent="Reading the scheme…";$("readImg").disabled=true;
+  try{
+    const sample=await claude.use("sample");
+    if(!sample)throw {message:"Reading images is not available in this view. Edit the rules by hand instead."};
+    const blob=await shrink($("img").files[0]);
+    const prompt=`This image is a monthly wholesale promotional scheme table. Extract EVERY row as JSON only, in this exact shape:
+{"month":"Oct’26","rules":[{"name":"short product name","codes":[2006,2021],"keywords":[],"unit":"ctn","branch":"","type":"pct","slabs":[{"min":5,"pct":2}],"gift":""}]}
+Rules:
+- codes: the 4-digit number of each FG code in the FG CODE column (FG 2006 -> 2006, FG/4409 -> 4409). Include all codes listed, including red ones.
+- If the FG column says "ALL ..." (all PJ codes, all glycerine, all creams, all hair extension, all imported) use codes [] and put lowercase keywords that would appear in product descriptions in "keywords".
+- unit: "pcs" if the slab column is in pcs, otherwise "ctn".
+- slabs: each slab row with min quantity and scheme percent as a number (6.00% -> 6).
+- Same codes with different slabs for different regions (for example vinegar for Dar es Salaam & Morogoro versus other branches) become separate rules with branch "only:Dar es Salaam,Morogoro" or "except:Dar es Salaam,Morogoro". Otherwise branch is "".
+- Rows like "Buy 1 carton, get 1 pc giftpack free" use type "gift", slabs [{"min":1,"pct":0}] and the offer text in "gift". All other rows use type "pct".
+- month is the scheme month shown in the heading. Return JSON only, nothing else.`;
+    const j=await sample.json(prompt,{images:[blob],modelTier:"complex",cache:false});
+    if(!j||!Array.isArray(j.rules)||!j.rules.length)throw {message:"No rules found in the image. Try a clearer image."};
+    j.rules.forEach(r=>{r.codes=(r.codes||[]).map(Number);r.keywords=(r.keywords||[]).map(s=>String(s).toLowerCase());r.unit=r.unit==="pcs"?"pcs":"ctn";r.branch=r.branch||"";r.type=r.type==="gift"?"gift":"pct";r.slabs=(r.slabs||[]).map(s=>({min:+s.min,pct:+s.pct||0})).sort((a,b)=>a.min-b.min)});
+    scheme=refine({month:j.month||"",rules:j.rules});save();showScheme();
+    msg.className="msg ok";msg.textContent=`Read ${scheme.rules.length} scheme rows for ${scheme.month||"this month"}. Please check the list below against your image.`;
+  }catch(e){msg.className="msg err";msg.textContent="Could not read the image: "+(e.message||e.code||e)}
+  $("readImg").disabled=false;
+};
+$("applyRules").onclick=()=>{try{const j=JSON.parse($("rulesTxt").value);if(!Array.isArray(j.rules))throw 0;scheme=j;save();showScheme();$("imgMsg").className="msg ok";$("imgMsg").textContent="Rules updated."}catch(e){$("imgMsg").className="msg err";$("imgMsg").textContent="The rules text is not valid JSON."}};
+$("resetRules").onclick=()=>{scheme=JSON.parse(JSON.stringify(DEFAULT));save();showScheme()};
+$("dlRules").onclick=async()=>{try{const d=await claude.use("downloads");if(d)await d.save({filename:"scheme-"+(scheme.month||"month").replace(/\W+/g,"")+".json",data:JSON.stringify(scheme,null,1)})}catch(e){}};
+$("ldRules").onchange=async e=>{try{scheme=JSON.parse(await e.target.files[0].text());save();showScheme()}catch(x){$("imgMsg").className="msg err";$("imgMsg").textContent="That rules file could not be read."}};
+
+/* ---- sales file ---- */
+let wb=null,table=[],headers=[],map={};
+const FIELDS=[["code","Item code"],["desc","Description"],["qty","Sold qty"],["amt","Amount"],["loc","Route / vehicle"],["unit","Unit"],["branch","Branch"]];
+const PAT={code:[/^item\s*no/i,/fg\s*code/i,/^no\.?$/i,/^code$/i],desc:[/desc/i,/product/i],qty:[/sold\s*(qty|quantity|ctn|pcs)/i,/^qty$/i,/quantity/i],amt:[/line\s*amount/i,/^amount/i,/sales\s*value/i],loc:[/location/i,/route/i,/vehicle/i,/salesm/i,/customer/i],unit:[/unit\s*of\s*measure/i,/^unit$/i,/^uom$/i],branch:[/branch/i,/region/i]};
+$("sales").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{wb=XLSX.read(await f.arrayBuffer(),{type:"array"})}catch(x){$("salesMsg").className="msg err";$("salesMsg").textContent="That file could not be opened.";return}
+  const prefer=wb.SheetNames.find(n=>{const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}).slice(0,8).flat().join("|");return /sold\s*(qty|quantity|ctn)/i.test(r)&&/item\s*no|fg\s*code|^no\./i.test(r)})||wb.SheetNames[0];
+  buildNames();
+  $("sheet").innerHTML=wb.SheetNames.map(n=>`<option${n===prefer?" selected":""}>${esc(n)}</option>`).join("");
+  loadSheet();
+};
+$("sheet").onchange=loadSheet;$("branch").oninput=recalc;
+function loadSheet(){
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[$("sheet").value],{header:1,defval:""});
+  let hi=rows.slice(0,12).findIndex(r=>r.some(c=>/sold/i.test(c))&&r.some(c=>/no\.?$|code|item/i.test(String(c).trim())));
+  if(hi<0)hi=0;
+  headers=rows[hi].map(h=>String(h).trim());table=rows.slice(hi+1);
+  map={};
+  for(const[k]of FIELDS){const i=PAT[k].map(p=>headers.findIndex(h=>p.test(h))).find(i=>i>=0);map[k]=i>=0?i:-1}
+  $("mapRow").innerHTML=FIELDS.map(([k,l])=>`<label class="f">${l}<select data-k="${k}"><option value="-1">(none)</option>${headers.map((h,i)=>h?`<option value="${i}"${map[k]===i?" selected":""}>${esc(h)}</option>`:"").join("")}</select></label>`).join("");
+  $("mapRow").querySelectorAll("select").forEach(s=>s.onchange=()=>{map[s.dataset.k]=+s.value;recalc()});
+  recalc();
+}
+
+/* ---- calculation ---- */
+function norm(){
+  const g=(r,k)=>map[k]>=0?r[map[k]]:"";
+  return table.map(r=>{
+    const m=String(g(r,"code")).match(/(\d{3,5})/);
+    const qty=parseFloat(String(g(r,"qty")).replace(/,/g,""))||0;
+    return{code:m?+m[1]:null,raw:String(g(r,"desc")).trim(),desc:String(g(r,"desc")).toLowerCase(),qty,amt:parseFloat(String(g(r,"amt")).replace(/,/g,""))||0,
+      loc:String(g(r,"loc")||"All").trim()||"All",unit:/^pc/i.test(String(g(r,"unit")).trim())?"pcs":"ctn",branch:String(g(r,"branch")||$("branch").value).toLowerCase()};
+  }).map(r=>{const m=r.raw.match(/X\s*(\d+)\s*(PCS|DZ)/i);const pack=m?(+m[1])*(/DZ/i.test(m[2])?12:1):1;r.pack=pack;r.ctn=r.unit==='pcs'?r.qty/pack:r.qty;r.pcs=r.unit==='pcs'?r.qty:r.qty*pack;return r}).filter(r=>r.qty>0);
+}
+function branchOK(rule,b){
+  if(!rule.branch)return true;if(!b)return null;
+  const[mode,list]=rule.branch.split(":");const hit=(list||"").split(",").some(x=>x.trim()&&b.includes(x.trim().toLowerCase()));
+  return mode==="only"?hit:!hit;
+}
+let lastRes=null;
+function kw(k,d){return k&&k.split('+').every(t=>{t=t.trim();const n=t[0]==='!';if(n)t=t.slice(1);const ok=/^[0-9]/.test(t)?new RegExp('(^|[^0-9])'+t).test(d):d.includes(t);return n?!ok:ok})}
+function recalc(){
+  const out=$("out");
+  if(!table.length){out.innerHTML='<div class="msg">Add the scheme and sales data to see results.</div>';return}
+  const rows=norm();if(!rows.length){out.innerHTML='<div class="msg err">No sold quantity found. Check the column choices in step 2.</div>';return}
+  const locs={};let skipped=false;
+  for(const r of rows){
+    for(const rule of scheme.rules){
+      const hit=(rule.codes||[]).includes(r.code)||(rule.keywords||[]).some(k=>kw(k,r.desc));
+      if(!hit)continue;r.matched=true;
+      const b=branchOK(rule,r.branch);if(b===null){skipped=true;continue}if(!b)continue;
+      const L=locs[r.loc]=locs[r.loc]||{};const key=rule.splitSize?rule.name+' · '+sizeOf(r.raw):rule.name;const x=L[key]=L[key]||{rule,key,qty:0,amt:0};const q=rule.unit==='pcs'?r.pcs:r.ctn;x.qty+=q;x.amt+=r.amt;(x.items=x.items||[]).push({raw:r.raw,qty:q,ctn:r.ctn,pcs:r.pcs,pack:r.pack,amt:r.amt});
+    }
+  }
+  const res=[];let tAmt=0,tSch=0,gifts=0,focT=0;
+  for(const loc of Object.keys(locs).sort()){
+    const lines=Object.values(locs[loc]).map(x=>{
+      const sl=x.rule.slabs||[];let hi=-1;sl.forEach((s,i)=>{if(x.qty>=s.min)hi=i});
+      const pct=hi>=0?sl[hi].pct:0,nx=sl[hi+1];
+      const isGift=x.rule.type==="gift";
+      const gift=isGift&&hi>=0?Math.floor(x.qty/(sl[0].min||1)):0;const foc=!isGift&&hi>=0&&!!sl[hi].foc;let focPcs=0,focCtn=0;if(foc)(x.items||[]).forEach(it=>{it.focPcs=it.pcs*pct/100;it.focCtn=it.focPcs/it.pack;focPcs+=it.focPcs;focCtn+=it.focCtn});
+      return{loc,rule:x.key||x.rule.name,unit:x.rule.unit,qty:x.qty,amt:x.amt,slab:hi>=0?sl[hi].min:"–",pct,val:isGift?0:x.amt*pct/100,gift,giftTxt:x.rule.gift,items:x.items,isGift,foc,focPcs,focCtn,next:nx&&!isGift?`${fmt(nx.min-x.qty,2)} more ${x.rule.unit} for ${nx.pct}%`:""};
+    });
+    const sch=lines.reduce((a,l)=>a+l.val,0),amt=lines.reduce((a,l)=>a+l.amt,0);
+    res.push({loc,lines,sch,amt});tSch+=sch;tAmt+=amt;gifts+=lines.reduce((a,l)=>a+l.gift,0);focT+=lines.reduce((a,l)=>a+l.focCtn,0);
+  }
+  lastRes=res;const un={};rows.filter(r=>!r.matched).forEach(r=>{const k=r.code+'|'+r.raw;const u=un[k]=un[k]||{raw:r.raw,code:r.code,ctn:0,amt:0};u.ctn+=r.ctn;u.amt+=r.amt});const ul=Object.values(un);const unHtml=ul.length?'<details open><summary><span>Sold but no scheme this month ('+ul.length+' items)</span></summary><div class="tw"><table><tr><th>Item</th><th>Description</th><th class="n">Sold ctn</th><th class="n">Amount</th></tr>'+ul.map(u=>'<tr><td>FG/'+u.code+'</td><td>'+esc(u.raw)+'</td><td class="n">'+fq(u.ctn)+'</td><td class="n">'+fmt(u.amt)+'</td></tr>').join('')+'</table></div></details>':'';
+  out.innerHTML=(skipped?'<div class="msg err">Some rules depend on branch. Type the branch of this data in step 2 so they can apply.</div>':"")+
+  `<div class="tot"><div><b>${fmt(tSch)}</b><span>Total scheme value (TZS)</span></div><div><b>${fmt(tAmt)}</b><span>Sales covered by schemes (TZS)</span></div><div><b>${fmt(gifts)}</b><span>Free gift packs</span></div><div><b>${fmt(focT,2)}</b><span>FOC cartons (premium toothbrush)</span></div></div>
+  ${unHtml}<div class="row"><button id="exp">Download result CSV</button></div>`+
+  res.map(r=>`<details${res.length===1?" open":""}><summary><span>${esc(r.loc)}</span><span>${fmt(r.sch)} TZS</span></summary><div class="tw"><table><tr><th>Scheme</th><th class="n">Sold</th><th class="n">Slab</th><th class="n">%</th><th class="n">Amount</th><th class="n">Scheme value</th><th>Note</th></tr>`+
+  r.lines.map(l=>`<tr><td>${esc(l.rule)}</td><td class="n">${fmt(l.qty,2)} ${l.unit}</td><td class="n">${l.slab}</td><td class="n">${l.pct}</td><td class="n">${fmt(l.amt)}</td><td class="n">${fmt(l.val)}</td><td class="nx">${l.gift?esc(l.giftTxt)+" × "+l.gift:l.foc?"FOC "+fmt(l.focCtn,2)+" ctn ("+fmt(l.focPcs,1)+" pcs) "+esc(l.next):esc(l.next)}</td></tr>`).join("")+
+  `</table></div></details>`).join("");
+  $("exp").onclick=exportCsv;renderForms();
+  $("salesMsg").className="msg ok";$("salesMsg").textContent=`${rows.length} sold lines read.`;
+}
+async function exportCsv(){
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const lines=[["Route","Scheme","Sold","Unit","Slab","Percent","Amount","Scheme value","Gift packs"].join(",")];
+  lastRes.forEach(r=>r.lines.forEach(l=>lines.push([q(l.loc),q(l.rule),l.qty,l.unit,l.slab,l.pct,Math.round(l.amt),Math.round(l.val),l.gift].join(","))));
+  try{const d=await claude.use("downloads");if(d)await d.save({filename:"scheme-result.csv",data:lines.join("\n")})}catch(e){}
+}
+const fq=n=>Number(n||0).toLocaleString('en-US',{maximumFractionDigits:3});const r2=n=>Math.round(n*100+1e-6)/100;
+let nameMap={};
+const nk=s=>String(s||'').replace(/ /g,'').toUpperCase();
+function buildNames(){nameMap={};const n=wb.SheetNames.find(x=>/^name$/i.test(x.trim()));if(!n)return;XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''}).slice(1).forEach(r=>{if(r[0])nameMap[nk(r[0])]=String(r[2]||'').trim()})}
+const FORMCSS=`@page{size:A4 landscape;margin:10mm}.form{background:#fff;color:#000;font:14px Arial,sans-serif;padding:8px;margin:14px 0;border:1px solid #999;break-after:page}.form:last-child{break-after:auto}.form h3{text-align:center;text-decoration:underline;font-size:22px;margin:0 0 8px}.fh{display:flex;justify-content:space-between;margin-bottom:8px;font-size:14px}.form table{width:100%;border-collapse:collapse;table-layout:fixed}.form th,.form td{border:1px solid #444;padding:5px 6px;font-size:13px;white-space:normal;word-wrap:break-word;color:#000;background:#fff;text-align:left}.form th{text-align:center;font-weight:700}.form td{height:28px}.form td.n{text-align:right}.decl{margin-top:12px;font-size:13px;break-inside:avoid}.sig{display:grid;grid-template-columns:1fr 1fr;gap:24px 40px;margin-top:22px}.sig span{display:block}`;
+const st=document.createElement('style');st.textContent=FORMCSS;document.head.appendChild(st);
+(function(){const d=new Date();$('fdate').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
+function formsHtml(){
+ if(!lastRes||!lastRes.length)return '';
+ const dt=($('fdate').value||'').split('-').reverse().join('/');
+ return lastRes.map(r=>{
+  const rows=[];
+  r.lines.forEach(l=>{if(!(l.pct>0||l.gift))return;(l.items||[]).forEach(it=>rows.push({d:it.raw,q:l.unit==='pcs'?fq(it.ctn)+' ctn ('+fmt(it.pcs)+' pcs)':fq(it.ctn),p:(l.isGift||l.foc)?'':l.pct,s:l.foc?l.rule+' – FOC '+l.pct+'%':l.rule,sq:l.isGift?Math.floor(it.qty):(l.foc?fmt(it.focCtn,2)+' ctn<br>('+fmt(it.focPcs,1)+' pcs)':''),v:l.isGift?0:Math.round(it.amt*l.pct/100)}))});
+  const tot=rows.reduce((a,x)=>a+x.v,0);
+  while(rows.length<10)rows.push({d:'',q:'',p:'',s:'',sq:'',v:''});
+  const nm=nameMap[nk(r.loc)]||'';
+  return `<div class="form"><div class="fh"><span>Route / vehicle: <b>${esc(r.loc)}</b>${nm?' &nbsp; Sales executive: <b>'+esc(nm)+'</b>':''}</span><span>Date: <b>${esc(dt)}</b></span></div><h3>BTL Declaration Form</h3><table><colgroup><col style="width:8%"><col style="width:15%"><col style="width:8%"><col style="width:25%"><col style="width:10%"><col style="width:7%"><col style="width:12%"><col style="width:7%"><col style="width:8%"></colgroup><thead><tr><th>Customer Code</th><th>Customer Name &amp; Mobile Number</th><th>Invoice No.</th><th>Item Description (SKU)</th><th>Sold Qty</th><th>Line Discount %</th><th>Applicable Scheme</th><th>Scheme Qty</th><th>Value (TZS)</th></tr></thead><tbody>${rows.map(x=>`<tr><td></td><td></td><td></td><td>${esc(x.d)}</td><td class="n">${x.q}</td><td class="n">${x.p}</td><td>${esc(x.s)}</td><td class="n">${x.sq}</td><td class="n">${x.v===''||x.v===0?'':fmt(x.v)}</td></tr>`).join('')}<tr><td colspan="8" style="text-align:right"><b>Total</b></td><td class="n"><b>${fmt(tot)}</b></td></tr></tbody></table><div class="decl"><b>Sales Executive Declaration (Mandatory)</b><br><i>“I hereby declare that the above BTL discounts/free goods were given strictly as per approved scheme and are linked to actual sales achieved. No unauthorised benefits have been extended.”</i><div class="sig"><span>Date: ______________</span><span>Sales Executive Name &amp; Signature: ______________</span><span>BOM: ______________</span><span>Checked and verified by: BSM ______________</span></div></div></div>`;
+ }).join('');
+}
+function renderForms(){$('forms').innerHTML=formsHtml()}
+$('fdate').oninput=renderForms;
+$('prt').onclick=()=>{try{window.print()}catch(e){}$('pmsg').textContent='If no print window opened, tap “Download printable forms”, open the downloaded file and it will print.'};
+$('svf').onclick=async()=>{try{const d=await claude.use('downloads');if(d)await d.save({filename:'BTL-forms.html',data:'<!DOCTYPE html><meta charset=utf-8><title>BTL forms</title><style>'+FORMCSS+'</style>'+formsHtml()+'<scr'+'ipt>onload=function(){setTimeout(function(){print()},400)}</scr'+'ipt>'})}catch(e){}};
+showScheme();
+</script>
+</body>
+</html>
+
+
+
+
